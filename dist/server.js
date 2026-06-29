@@ -41,12 +41,71 @@ import bcrypt from "bcryptjs";
 
 // src/db/index.ts
 import { Pool } from "pg";
-var pool = new Pool({
-  connectionString: config_default.connectionString
-});
+import dns from "dns/promises";
+var realPool = null;
+async function createPool() {
+  if (realPool)
+    return realPool;
+  const cs = String(config_default.connectionString || "");
+  const baseCfg = {
+    connectionTimeoutMillis: Number(process.env.DB_CONN_TIMEOUT) || 5e3
+  };
+  let sslOpt = void 0;
+  if (process.env.DB_SSL === "true" || /sslmode=require/i.test(cs)) {
+    try {
+      const url = new URL(cs);
+      sslOpt = { rejectUnauthorized: false, servername: url.hostname };
+    } catch (e) {
+      sslOpt = { rejectUnauthorized: false };
+    }
+  }
+  try {
+    const url = new URL(cs);
+    const host = url.hostname;
+    const port = Number(url.port) || 5432;
+    const user = url.username || void 0;
+    const password = url.password || void 0;
+    const database = url.pathname ? url.pathname.replace(/^\//, "") : void 0;
+    let hostaddr;
+    try {
+      const lookup = await dns.lookup(host, { family: 4 });
+      hostaddr = lookup.address;
+    } catch (e) {
+      hostaddr = void 0;
+    }
+    const cfg = {
+      ...baseCfg,
+      host: hostaddr || host,
+      port,
+      user,
+      password,
+      database
+    };
+    if (sslOpt)
+      cfg.ssl = sslOpt;
+    realPool = new Pool(cfg);
+    return realPool;
+  } catch (e) {
+    realPool = new Pool({
+      ...baseCfg,
+      connectionString: cs,
+      ...sslOpt ? { ssl: sslOpt } : {}
+    });
+    return realPool;
+  }
+}
+async function getPool() {
+  return await createPool();
+}
+var pool = {
+  query: async (...args) => (await getPool()).query(...args),
+  connect: async (...args) => (await getPool()).connect(...args),
+  end: async (...args) => (await getPool()).end(...args)
+};
 var initDB = async () => {
   try {
-    await pool.query(`
+    const p = await getPool();
+    await p.query(`
             CREATE TABLE IF NOT EXISTS users(
             id SERIAL PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
@@ -58,7 +117,7 @@ var initDB = async () => {
             updated_at TIMESTAMP DEFAULT NOW()
             )
             `);
-    await pool.query(`
+    await p.query(`
               CREATE TABLE IF NOT EXISTS issues(
               id SERIAL PRIMARY KEY,
               reporter_id INT REFERENCES users(id),
