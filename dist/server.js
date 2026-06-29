@@ -44,8 +44,7 @@ import { Pool } from "pg";
 import dns from "dns/promises";
 var realPool = null;
 async function createPool() {
-  if (realPool)
-    return realPool;
+  if (realPool) return realPool;
   const cs = String(config_default.connectionString || "");
   const baseCfg = {
     connectionTimeoutMillis: Number(process.env.DB_CONN_TIMEOUT) || 5e3
@@ -81,8 +80,7 @@ async function createPool() {
       password,
       database
     };
-    if (sslOpt)
-      cfg.ssl = sslOpt;
+    if (sslOpt) cfg.ssl = sslOpt;
     realPool = new Pool(cfg);
     return realPool;
   } catch (e) {
