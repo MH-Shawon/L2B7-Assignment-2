@@ -14,7 +14,6 @@ const createUserIntoDB = async (payload: IUser) => {
   delete result.rows[0].password;
   return result;
 };
-
 export const userService = {
   createUserIntoDB,
 };
